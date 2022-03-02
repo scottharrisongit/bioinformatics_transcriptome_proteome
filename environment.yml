@@ -7,9 +7,3 @@ channels:
   - defaults
 dependencies:
   - conda-forge::glpk
-  - conda-forge::r-base
-  - conda-forge::r-rmsnumpress
-  - conda-forge::r-magrittr
-  - conda-forge::r-bit64
-  - conda-forge::r-ape
-  - conda-forge::r-phangorn
