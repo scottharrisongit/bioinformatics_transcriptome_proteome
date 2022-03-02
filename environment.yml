@@ -6,5 +6,10 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - conda-forge::r-ape
-  - conda-forge::r-phangorn
+  - conda-forge::r-base=4.0.2
+  - conda-forge::r-rmsnumpress=1.0.1
+  - conda-forge::r-magrittr=2.0.1
+  - conda-forge::r-bit64=4.0.5
+  - conda-forge::r-ape=5.4
+  - conda-forge::r-phangorn=2.5.5
+
