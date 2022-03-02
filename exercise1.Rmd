@@ -1,21 +1,111 @@
-# bioinformatics_blosum_tree
+---
+title: "BLOSUM and Trees"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
 
-# https://bioconductor.org/packages/devel/bioc/manuals/Biostrings/man/Biostrings.pdf
+## Configure environment
 
-```{r echo=FALSE, setsize}
+For more information on the BiocManager::install function, see https://cran.r-project.org/web/packages/BiocManager/BiocManager.pdf
+
+You can run each code segment independently by clicking on the small
+green triangle in the upper right of each code section. Try it below as
+you set up your environment (with supporting software packages).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if (!require("ape", quietly = TRUE))
+    install.packages("ape")
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+if (!require("Biostrings", quietly = TRUE))
+    suppressWarnings(BiocManager::install(c("Biostrings","ggtree"),update=FALSE))
+    library(Biostrings)
+    library(ggtree)
+data(BLOSUM62)
+```
+
+## Exercise 1. Understanding the BLOSUM scoring matrix.
+
+Look at https://en.wikipedia.org/wiki/BLOSUM
+
+In the following code segment, modify the subject_example sequence by creating similar subject_better and subject_worse sequences that will increase versus decrease the resulting BLOSUM62-based alignment score.
+
+(Note this exercise is adapted from https://bioconductor.org/packages/devel/bioc/manuals/Biostrings/man/Biostrings.pdf)
+
+```{r blosum_example, echo=FALSE}
 pattern <- c("TSPASIRPPAGPSSRPAMVSSRRTRPSPPGPRRPTGRPCCSAAPRRPQAT",
 "GGWKTCSGTCTTSTSTRHRGRSGWSARTTTAACLRASRKSMRAACSRSAG",
 "SRPNRFAPTLMSSCITSTTGPPAWAGDRSHE")
-subject <- c("TSPASIRPPAGPSSRRPSPPGPRRPTGRPCCSAAPRRPQATGGWKTCSGT",
+subject_example <- c("TSPASIRPPAGPSSRRPSPPGPRRPTGRPCCSAAPRRPQATGGWKTCSGT",
 "CTTSTSTRHRGRSGWRASRKSMRAACSRSAGSRPNRFAPTLMSSCITSTT",
 "GPPAWAGDRSHE")
 pattern <- unlist(AAStringSet(pattern))
-subject <- unlist(AAStringSet(subject))
+subject_example <- unlist(AAStringSet(subject_example))
 pattern # original pattern
-subject # original subject
+subject_example # original subject
 data(BLOSUM62)
-pa5 <- pairwiseAlignment(pattern, subject,
+pa5 <- pairwiseAlignment(pattern, subject_example,
 substitutionMatrix=BLOSUM62,
 gapOpening=9.5, gapExtension=0.5)
-pa5
+print(pa5)
+
 ```
+
+## Levenshtein distance example
+
+Look at the manual for stringDist (https://rdrr.io/bioc/Biostrings/man/stringDist.html) and write a function that calculate the Levenshtein scores for the pattern sequence versus subject_example versus subject_better versus subject_worse.
+
+```{r levenshtein_example, echo=FALSE}
+# You'll need to add subject_better and subject_worse to the vector
+# in the c() function below.
+distance_matrix <- 
+  stringDist(c(as.character(pattern),
+             as.character(subject_example)
+             ),
+           method="levenshtein")
+distance_matrix
+```
+
+Wow, that is a distance matrix! This can be used to create a tree. Save the value of the above function to a variable, and then put that variable into the hclust function.
+(Remember though that cluster-based methods do not produce trees that are 
+accurate.)
+
+```{r cluster_based_tree}
+plot(
+  hclust(distance_matrix,method="average"),
+  labels=c("pattern","example","better","worse")
+)
+
+```
+
+## Phylogenetic Trees with ggtree
+
+# Simulated phylogeny
+
+```{r simulated_tree}
+plot(rtree(n=20))
+```
+
+# The T7 sequence data are from Hillis et al seminal work in the 1990s.
+
+```{r phylogenetic_tree}
+t7 <- readDNAStringSet("t7hillis9seq_fasta2.txt")
+
+protein03 <- subseq(t7,1,519)
+protein17 <- subseq(t7,520,875)
+protein18 <- subseq(t7,876,1091)
+```
+
+# We'll do more next time to build trees....
+
+## Final Exercise
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+
+Try knitting both an HTML document and an MS word document. Submit your MS word document through blackboard for today's assignment.
+
