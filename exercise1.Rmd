@@ -23,7 +23,7 @@ if (!require("BiocManager", quietly = TRUE))
 if (!require("Biostrings", quietly = TRUE))
     suppressWarnings(BiocManager::install(c("Biostrings","ggtree"),update=FALSE))
     library(Biostrings)
-    library(ggtree)
+#    library(ggtree)
 data(BLOSUM62)
 ```
 
@@ -74,9 +74,9 @@ Wow, that is a distance matrix! This can be used to create a tree. Save the valu
 accurate.)
 
 ```{r cluster_based_tree}
-plot(
-  hclust(distance_matrix,method="average"),
-  labels=c("pattern","example","better","worse")
+#plot(
+#  hclust(distance_matrix,method="average"),
+#  labels=c("pattern","example","better","worse")
 )
 
 ```
@@ -86,7 +86,7 @@ plot(
 # Simulated phylogeny
 
 ```{r simulated_tree}
-plot(rtree(n=20))
+#plot(rtree(n=20))
 ```
 
 # The T7 sequence data are from Hillis et al seminal work in the 1990s.
