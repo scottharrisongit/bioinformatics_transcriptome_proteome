@@ -1,2 +1,1 @@
-dvipng
 libglpk-dev
