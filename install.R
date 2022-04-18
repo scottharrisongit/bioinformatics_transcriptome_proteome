@@ -1,0 +1,3 @@
+markdown
+rmarkdown
+tinytex
