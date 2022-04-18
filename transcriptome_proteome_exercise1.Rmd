@@ -1,0 +1,349 @@
+---
+title: "Course Project, Part 1"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+## Configure environment
+
+You can use this link to an online invocation of RStudio that you can access with a modern web browser and decent connection to the internet:
+
+https://mybinder.org/v2/gh/scottharrisongit/bioinformatics_transcriptome_proteome/main?urlpath=rstudio
+
+Be sure to save your R markdown code as you make edits and adjustments to this provided template.
+
+For more information on the BiocManager::install function, see https://cran.r-project.org/web/packages/BiocManager/BiocManager.pdf
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Try the "Session, Restart R" option in R Studio if there are issues.
+install_packages <- function (package_names)
+{
+  for (package_name in package_names) {
+    if (!require(package_name,character.only=TRUE)) {
+      do.call("install.packages",list(package_name,ask=FALSE))
+    }
+    library(package_name,character.only=TRUE)
+  }
+}
+
+install.packages("rlang") # ensure this is the most up-to-date version for dplyr
+library(rlang)
+install_packages(c("BiocManager","ggplot2","ggrepel","rlang","dplyr"))
+
+# Install and load the following Bioconductor-based packages to aid the analysis.
+BiocManager::install(c("limma","pheatmap","ExpressionAtlas"),ask=FALSE)
+library(limma)
+library(pheatmap)
+library(ExpressionAtlas)
+
+# Install and load the following Bioconductor-based packages to aid annotation.
+BiocManager::install(c("AnnotationDbi","org.Mm.eg.db","org.Hs.eg.db","org.Rn.eg.db"),ask=FALSE)
+library("org.Rn.eg.db")
+library("org.Mm.eg.db")
+library("org.Hs.eg.db")
+```
+
+## Other notes
+
+It is admittedly a bit didactic to consider how we separate the overall analysis into stages of data collection, data processing and data analysis, and this may also be a bit subjective.
+
+We can, for instance, produce a heatmap as part of our data processing (to make sure that the data processing has been effective), but could also consider a final version of this heatmap to be relevant and very useful for analysis.
+
+So, as regards the partitioning of your code into sections of collection, processing and analysis, feel free to reposition some of the commands based on your own perspectives and goals for meaningful structure in your software.
+
+## Collecting data
+
+Choose an organism listed in ExpressionAtlas that has RNA-based data of baseline and differential expression along with recent additions of protein levels of baseline data.
+
+https://www.ebi.ac.uk/gxa/home
+
+You may want to use the "Browse Experiments" function to guide your selection of differential expression data (Experiment Type: differential) for RNAseq data and some baseline protein data (Experiment Type: baseline; search all columns for Proteomics).
+
+Due to how we are striving to do some basic cross-connecting of RNA with protein-based data and work within what is available at ExpressionAtlas, you would likely need to choose either human, mouse or rat as your organism of interest.
+
+Why are we using ExpressionAtlas? It provides a more searchable and reliable context of both RNA and protein-based data compared to other data resources. It is a "value-added" database (Papatheodorou et al., 2018; https://doi.org/10.1093/nar/gkx1158). Remember that data collection and initial processing can be a labor-intensive step. Effective strategization regarding selection of an appropriate database resource can help to conserve your time and energy for actual analysis in pursuit of your research objectives.
+
+As you search for protein-based data, don't worry if the "Results" tab does not show processed results. You can still access the "Expression values across all genes" from the Downloads tab.
+
+Here is an example of loading in data from an RNA-based and protein-based set of studies (in this case, for rats).
+
+```{r loading_data, echo=FALSE}
+
+rna_expdata <- load(url("https://www.ebi.ac.uk/gxa/experiments-content/E-GEOD-20895/static/E-GEOD-20895-atlasExperimentSummary.Rdata"))
+
+# The upper-level structure of the rna_expdata variable is as a list. Do you
+# remember how to reference the sequential items from a list?
+ 
+rna_expdata <- experiment_summary[[1]]
+
+protein_expdata <- read.table(url("https://www.ebi.ac.uk/gxa/experiments-content/E-PROT-86/resources/ExperimentDownloadSupplier.Proteomics/tsv"),skip=4,header=TRUE,sep="\t")
+
+# Let's manually investigate the uploaded data that is now stored within
+# variables inside our R environment.
+
+str(rna_expdata)
+head(protein_expdata)
+
+# There may be many interesting assays from the proteomic experimental data
+# that are shown across multiple columns. For this project, just pick one column
+# (perhaps the third column of the protein_data data frame).
+
+# A constrained view of the protein_data data frame (that just shows the first
+# three columns) is at:
+head(protein_expdata[,1:3])
+
+# So, if you just want to limit this variable to just three columns, you could
+# run this command:
+# protein_expdata <- protein_expdata[,1:3]
+
+# If you prefer another column, like the fourth, fifth, sixth, seventh, etc column
+# you could run a command like this:
+# protein_expdata <- protein_expdata[,c(1,2,6]]
+
+```
+
+## Processing data
+
+We now have a RangedSummarizedExperiment structured data object stored in a variable rna_expdata.
+
+The rna_expdata variable is a complex data object - a RangedSummarizedExperiment structured data object.  You can learn more about this impressive data structure at
+https://www.bioconductor.org/help/course-materials/2019/BSS2019/04_Practical_CoreApproachesInBioconductor.html
+
+As described before, the protein_data variable is a data frame - we can just focus on its first three columns: ENSEMBL identifier, official gene symbol, and a vector of expression levels for one of the conditions evaluated in the proteomic study.
+
+In the code below, we will examine the RNA-based data across different genes for the different assays from the experimental report. Some of the gene expression levels will be the same between assays, and others will differ. As we compare the different assays, we are essentially comparing categorical (qualitative) variable values to one another (one assay versus another assay). The identities of these assays are qualitative data and serve as input variables of interest. We then quantifying whether how similar assays are to one another as our output variable.
+
+What analytical method is appropriate for cross-comparing both individualized and grouped sets of assays with one another? For cross-comparing input variables that are categorical with output variables that are numerical, two common techniques are clustered bar charts and heatmaps.
+
+With a need to visually explore the comparative pairing of individual assays and how subsets of assays cross-compare to each other as well, the heatmap is an optimal choice.
+
+```{r process_explore_RNA, echo=FALSE}
+
+# The upper-level structure of this variable is as a list. Do you remember how
+# to reference the sequential items from a list?
+ 
+rna_expdata <- experiment_summary[[1]]
+ 
+# The challenge now is to pull data from this data structure and implement analyses on it.
+ 
+# Let’s see what we can implement from the analytical workflow at
+# https://sbc.shef.ac.uk/geo_tutorial/tutorial.nb.html
+ 
+rna_expdata_counts <- assays(rna_expdata)$counts
+ 
+# always a good idea to manually investigate contents of a critical variable
+dim(rna_expdata_counts)
+colnames(rna_expdata_counts)
+head(rownames(rna_expdata_counts))
+
+## use="c" addresses instances where they may be missing data points
+corMatrix <- cor(rna_expdata_counts,use="c")
+
+# Behold the heatmap - a great analytical tool for inspecting many comparisons
+# across qualitative differences.
+pheatmap(corMatrix)
+```
+
+## Analysis of Data
+
+It is a good idea to write down objectives first, and continually refer to them, as an analysis proceeds. In particular, it is strongly recommended that statistical methodology be first delineated regarding tests for significance. This is so that the analysis does not meander later on toward ad hoc application of statistical tests (driven by a desire to find P-values < 0.05) that depart from one's own critical understanding of the data sets and underlying model assumptions. Keep in mind that there are also qualitative examinations that are relevant to your analysis. Even though these may not readily yield p-values (visual identifications of heatmap cluster patterns), they can often be worth reporting upon as well.
+
+What objectives could we consider? After you have identified RNA and protein-based datasets for this course project, here are the analytical objectives:
+
+a) Can we comprehensively gauge the degree and significance of how RNA expression differs across the different assays of the RNA-based experimental data set? Moreover, which genes differ the most across these different assays?
+
+There are likely to be varying motivations, degrees of expertise, collaborative discussion and iteration that can surround this inquiry. This will influence the specific analyses we may choose to implement. For instance:
+
+Motivations - As we identify those genes that have extremely small p-values, this subset likely avoids false positives (compared to genes that associate with p-values hovering around, for instance, P=0.05). Or, if we are seeking to recover all possible genes that relate to a particularly strong difference in phenotypic outcomes, we may focus more on large magnitudes of fold changes and consider larger p-values.
+
+Expertise - maybe the hypotheses of the study relate to comparing different sugar catabolizing pathways, and there are some specific interdependencies that are expected between sets of genes; this background knowledge can help inform the level of noise we might be encountering from the data, and also those 
+
+Discussion and Iteration - as we examine different aspects of our analysis, we need to invite others' perspectives and also have our own perspective develop as we consider different aspects of the biological system. For instance, there may be a variety of expected (and unexpected) pathways that relate to different subsets of genes.
+
+There are some methods that help address this objective. We can, for instance,
+generate a table of differential expression to give ourselves the fluidity by which we can sort and examine different subsets of genes. That can be challenging though, across thousands of genes. Another method is to generate a volcano plot that potentially has some annotation to help navigate the overall range of fold changes and p-values that jointly occur as statistical measures upon the many genes we may want to inquire further about.
+
+Regarding considerations of pathways (or other annotations of function or association with biological processes and structure), there are diverse platforms for supporting this type of inquiry. Some of these platforms include KEGG and Ingenuity Pathway Analysis ("IPA"). A quick method for conducting some of these examinations across multiple pathway-based and other annotations is to use NIH DAVID (https://david.ncifcrf.gov/).
+
+b) Do levels of expression found for RNA correlate with levels of expression found for proteins? While the experimental conditions and associated conditions of biotechnological sampling that relate to your RNA data and protein data may vary, we might still expect some rough degree of consistency. In other words, there are likely to be some RNA and proteins that are generally at high levels of expression across these diverse conditions. Conversely, there are likely to be some RNA and proteins that are generally at low levels of expression across these diverse conditions.
+
+This objective helps to validate the general biology that is characterized and measured by the data set and our processing of it. If things seem odd, we would want to investigate the software we have written, the database resource that has been used, and the origination of the data. Regarding the latter step, we could examine the primary literature and potentially even communicate with the authors if we are finding something to be amiss. Another outcome relating to this objective is to help identify those types of RNA and proteins that do substantially vary. 
+
+For the intended scope of our course project evaluation, we are basing this analysis on a contrast between the two experiments chosen. We could however consider extending this work to sample from a broader range of experiments to more robustly distinguish the "most-always-high" and "most-always-low" sets of gene-associated RNA and protein expressions from those that are variable.
+
+c) Does our analysis match or differ with respect to prior published report(s)? Graduate students are expected to complete this particular objective.
+
+c.1) Does your data analysis accurately reproduce at least some of what has been reported in the published report(s)?
+
+c.2) Does your data analysis generate findings that differ with the published report(s)?
+
+c.3) Does your data analysis generate findings outside of the published report? What are some of these findings and are there follow-up studies that could be proposed based on the findings of your data analysis? In particular, for follow-up studies, consider how direct experimentation could help confirm that a particular gene or set of genes are truly associated with a phenomenon of interest.
+
+```{r design_heatmaps_PCA, echo=FALSE}
+
+# we are going to extract the study design information from the overall
+# RangedSummarizedExperiment data object (rna_expdata)
+
+colData(rna_expdata)
+
+sampleInfo <- colData(rna_expdata)
+
+# We want a command such as what follows, that relates to some interesting
+# value regarding the experiment (per the RangedSummarizedExperiment data object).
+# design <- model.matrix(~0+colData(expdata)$organism_part)
+
+# We will want to identify those "factors" (conditions) of the experiment that
+# have more than just one value.
+
+# There is a general recipe for this at
+# https://community.rstudio.com/t/counting-unique-values-in-multiple-columns/31136
+# as_tibble(iris) %>%
+#     summarize_at(vars(starts_with("Sepal.")), n_distinct, na.rm = TRUE)
+
+factors_with_multiple_values <-
+
+colnames(sampleInfo)[
+as_tibble(sampleInfo) %>%
+    summarize_at(colnames(sampleInfo), n_distinct, na.rm = TRUE) >1
+]
+
+sampleInfoComparisons <- as.data.frame(sampleInfo[factors_with_multiple_values])
+
+# We can use this information to enrich the view of our heatmap.
+rownames(sampleInfo) <- colnames(corMatrix)
+pheatmap(corMatrix,
+         annotation_col=sampleInfoComparisons) 
+
+# Another way to evaluate whether the vectors of expression levels do
+# effectively cluster together different assays of the experiment
+# is with a PCA plot.
+
+pca <- prcomp(t(rna_expdata_counts))
+
+# Enrich the PCA with the sample information
+
+# We can, for instance, examine the comparative factor in the final column
+# of the study design data.
+column_to_study <- ncol(sampleInfoComparisons)
+
+factor_of_interest <- colnames(sampleInfoComparisons)[column_to_study]
+
+# This could be cleaned up, but it works.
+colnames(sampleInfoComparisons)[column_to_study] <- 'factor_of_interest'
+cbind(sampleInfoComparisons, pca$x) %>% 
+ggplot(aes(x = PC1, y=PC2, col=factor_of_interest,label=factor_of_interest)) + geom_point() + geom_text_repel()
+colnames(sampleInfoComparisons)[column_to_study] <- factor_of_interest
+```
+
+```{r differential_expression_table, echo=FALSE}
+
+# As we proceed to the differential evaluation...
+# we need to relabel the names of factors being compared, so that they do not
+# have special characters.
+# This is because they will be used as labels within subsequent analysis commands.
+
+sampleInfoFactor <- sampleInfo[,factor_of_interest]
+design <- model.matrix(~0+sampleInfoFactor)
+
+colnames(design) # we need to relabel these (shorter and no space characters)!
+colnames(design) <- gsub(" ","_",sub("sampleInfoFactor","",colnames(design)))
+colnames(design)
+
+fit <- lmFit(rna_expdata_counts,design)
+head(fit$coefficients)
+
+contrasts <- makeContrasts(paste(colnames(design)[1],"-",colnames(design)[2]), levels=design)
+ 
+fit2 <- contrasts.fit(fit, contrasts)
+
+# The eBayes function will help to increase statistical power
+# (reducing false negatives; i.e., being able to hopefully
+# identify more of the true positives).
+fit2 <- eBayes(fit2)
+ 
+topTable(fit2)
+ 
+table(decideTests(fit2))
+```
+
+```{r differential_expression_volcano, echo=FALSE}
+full_results <- topTable(fit2, number=Inf)
+full_results <- tibble::rownames_to_column(full_results,"ID")
+ggplot(full_results,aes(x = logFC, y=B)) + geom_point()
+
+p_cutoff <- 0.05
+fc_cutoff <- 1
+
+full_results %>% 
+  mutate(Significant = adj.P.Val < p_cutoff, abs(logFC) > fc_cutoff ) %>% 
+  ggplot(aes(x = logFC, y = B, col=Significant)) + geom_point()
+  
+topN <- 20
+
+if (length(intersect(full_results$ID,keys(org.Mm.eg.db,keytype="ENSEMBL")))>0) {
+	full_results$Symbol <- mapIds(org.Mm.eg.db,keys=full_results$ID,column="SYMBOL", keytype="ENSEMBL", multiVals="first")	
+} else if (length(intersect(full_results$ID,keys(org.Hs.eg.db,keytype="ENSEMBL")))>0) {
+	full_results$Symbol <- mapIds(org.Hs.eg.db,keys=full_results$ID,column="SYMBOL", keytype="ENSEMBL", multiVals="first")	
+} else if (length(intersect(full_results$ID,keys(org.Rn.eg.db,keytype="ENSEMBL")))>0) {
+	full_results$Symbol <- mapIds(org.Rn.eg.db,keys=full_results$ID,column="SYMBOL", keytype="ENSEMBL", multiVals="first")
+} else {
+	print("ERROR! Gene IDs are not human, mouse or rat ENSEMBL gene IDs.")
+}
+
+full_results %>% 
+  mutate(Significant = adj.P.Val < p_cutoff, abs(logFC) > fc_cutoff ) %>% 
+  mutate(Rank = 1:n(), Label = ifelse(Rank < topN, Symbol,"")) %>% 
+  ggplot(aes(x = logFC, y = B, col=Significant,label=Label)) + geom_point() + geom_text_repel(col="black",size=2,max.overlaps=Inf)
+
+```
+
+## Transcriptome and Proteome
+
+```{r transcriptome_and_proteome, echo=FALSE}
+
+shared_gene_names <- intersect(protein_expdata$Gene.ID,rownames(rna_expdata))
+
+rownames(protein_expdata) <- protein_expdata$Gene.ID
+
+protein_rna <- cbind(protein_expdata[shared_gene_names,3],rna_expdata_counts[shared_gene_names,1])
+colnames(protein_rna) <- c('protein','RNA')
+
+# Pearson product-moment correlation of protein
+# expression values with RNA expression values
+
+# We would expect a non-zero correlation coefficient.
+cor.test(x=protein_rna[,1], y=protein_rna[,2], method = 'pearson')
+cor.test(x=protein_rna[,1], y=protein_rna[,2], method = 'spearman')
+
+# We would expect a correlation coefficient close to zero (due to
+# shuffling the protein_rna[,2] column of RNA expression values.
+cor.test(x=protein_rna[,1], y=sample(protein_rna[,2]), method = 'pearson')
+cor.test(x=protein_rna[,1], y=sample(protein_rna[,2]), method = 'spearman')
+
+plot(protein_rna[order(protein_rna[,'RNA'],decreasing=TRUE),],log="xy")
+
+```
+
+## Pathways
+
+This section is in development. You may consider inputting the following list into NIH DAVID (https://david.ncifcrf.gov/) to begin analyzing the potential pathways relating to the gene expression data.
+
+```{r pathways, echo=FALSE}
+cat(full_results[1:20,'ID'])
+
+# https://david.ncifcrf.gov/
+
+```
+
+## Final Exercise
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+
+Try knitting both an HTML document and an MS word document. Submit one of these into blackboard.
+
