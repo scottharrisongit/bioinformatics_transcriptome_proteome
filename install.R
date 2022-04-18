@@ -17,9 +17,15 @@ install.packages("rlang") # ensure this is the most up-to-date version for dplyr
 library(rlang)
 install_packages(c("rlang","BiocManager","ggplot2","ggrepel","rlang","dplyr"))
 
-# Install and load the following Bioconductor-based packages.
+# Install and load the following Bioconductor-based packages to support the analysis.
 BiocManager::install(c("limma","pheatmap","ExpressionAtlas"),ask=FALSE)
 
 library(limma)
 library(pheatmap)
 library(ExpressionAtlas)
+
+# Install and load the following Bioconductor-based packages to aid annotation.
+BiocManager::install(c("AnnotationDbi","org.Mm.eg.db","org.Hs.eg.db","org.Rn.eg.db"),ask=FALSE)
+library("org.Rn.eg.db")
+library("org.Mm.eg.db")
+library("org.Hs.eg.db")
